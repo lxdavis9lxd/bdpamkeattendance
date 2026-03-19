@@ -2,10 +2,52 @@
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
 const { ApiClient } = require("./utils/apiClient");
 
 const app = express();
 const PORT = 5000;
+
+// ── MongoDB connection ────────────────────────────────────────────────────────
+const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/bdpamke_student";
+
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected to bdpamke_student"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err.message));
+
+// ── Mongoose Schemas ──────────────────────────────────────────────────────────
+const studentSchema = new mongoose.Schema(
+  {
+    firstName:       { type: String, required: true, trim: true },
+    lastName:        { type: String, required: true, trim: true },
+    phone:           { type: String, trim: true },
+    email:           { type: String, trim: true },
+    grade:           { type: String, trim: true },
+    parentName:      { type: String, trim: true },
+    parentPhone:     { type: String, trim: true },
+  },
+  { timestamps: true }
+);
+
+const attendanceRecordSchema = new mongoose.Schema(
+  {
+    studentId: { type: mongoose.Schema.Types.ObjectId, ref: "Student", required: true },
+    present:   { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const attendanceSchema = new mongoose.Schema(
+  {
+    date:    { type: String, required: true, unique: true }, // "YYYY-MM-DD"
+    records: [attendanceRecordSchema],
+  },
+  { timestamps: true }
+);
+
+const Student    = mongoose.model("Student",    studentSchema);
+const Attendance = mongoose.model("Attendance", attendanceSchema);
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors({
@@ -72,6 +114,142 @@ app.get("/api/proxy", async (req, res) => {
     return res.json(result.data);
   } catch (err) {
     return res.status(500).json({ error: "Proxy request failed." });
+  }
+});
+
+// ── Students ─────────────────────────────────────────────────────────────────
+
+// GET /api/students  → list all students sorted by last name
+app.get("/api/students", async (_req, res) => {
+  try {
+    const students = await Student.find().sort({ lastName: 1, firstName: 1 });
+    return res.json(students);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/students  → create a new student
+app.post("/api/students", async (req, res) => {
+  const { firstName, lastName, phone, email, grade, parentName, parentPhone } = req.body;
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: "firstName and lastName are required." });
+  }
+  try {
+    const student = await Student.create({ firstName, lastName, phone, email, grade, parentName, parentPhone });
+    return res.status(201).json(student);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/students/:id  → update a student
+app.put("/api/students/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid student ID." });
+  }
+  const { firstName, lastName, phone, email, grade, parentName, parentPhone } = req.body;
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: "firstName and lastName are required." });
+  }
+  try {
+    const updated = await Student.findByIdAndUpdate(
+      id,
+      { firstName, lastName, phone, email, grade, parentName, parentPhone },
+      { new: true, runValidators: true }
+    );
+    if (!updated) return res.status(404).json({ error: "Student not found." });
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/students/:id  → remove a student
+app.delete("/api/students/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid student ID." });
+  }
+  try {
+    const result = await Student.findByIdAndDelete(id);
+    if (!result) return res.status(404).json({ error: "Student not found." });
+    // Remove that student from all attendance records
+    await Attendance.updateMany({}, { $pull: { records: { studentId: new mongoose.Types.ObjectId(id) } } });
+    return res.json({ message: "Student deleted." });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+
+// GET /api/attendance/report  → summary for every student
+// Returns: [{ student, daysPresent, daysMissed, attendanceDates }]
+app.get("/api/attendance/report", async (_req, res) => {
+  try {
+    const [students, sessions] = await Promise.all([
+      Student.find().sort({ lastName: 1, firstName: 1 }),
+      Attendance.find(),
+    ]);
+
+    const totalDates = sessions.map((s) => s.date).sort();
+
+    const report = students.map((student) => {
+      const presentDates = [];
+      for (const session of sessions) {
+        const rec = session.records.find((r) => r.studentId.toString() === student._id.toString());
+        if (rec && rec.present) presentDates.push(session.date);
+      }
+      return {
+        student,
+        daysPresent: presentDates.length,
+        daysMissed:  totalDates.length - presentDates.length,
+        presentDates,
+        totalTrackedDays: totalDates.length,
+      };
+    });
+
+    return res.json({ report, totalDates });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/attendance/:date  → attendance record for a specific date (YYYY-MM-DD)
+app.get("/api/attendance/:date", async (req, res) => {
+  const { date } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: "Date must be in YYYY-MM-DD format." });
+  }
+  try {
+    const session = await Attendance.findOne({ date });
+    return res.json(session || { date, records: [] });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/attendance  → save (upsert) attendance for a date
+// Body: { date: "YYYY-MM-DD", records: [{ studentId, present }] }
+app.post("/api/attendance", async (req, res) => {
+  const { date, records } = req.body;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: "date (YYYY-MM-DD) is required." });
+  }
+  if (!Array.isArray(records)) {
+    return res.status(400).json({ error: "records must be an array." });
+  }
+  try {
+    const session = await Attendance.findOneAndUpdate(
+      { date },
+      { date, records },
+      { upsert: true, new: true }
+    );
+    return res.json(session);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
