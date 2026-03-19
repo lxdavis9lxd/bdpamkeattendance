@@ -2,11 +2,16 @@
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { ApiClient } = require("./utils/apiClient");
 
 const app = express();
 const PORT = 5000;
+
+// JWT secret — use env var in production
+const JWT_SECRET = process.env.JWT_SECRET || "bdpamke_jwt_secret_change_in_prod";
+const JWT_EXPIRES_IN = "8h";
 
 // ── MongoDB connection ────────────────────────────────────────────────────────
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/bdpamke_student";
@@ -58,6 +63,17 @@ const attendanceSchema = new mongoose.Schema(
 const Student    = mongoose.model("Student",    studentSchema);
 const Attendance = mongoose.model("Attendance", attendanceSchema);
 
+// ── User / Auth Schema ────────────────────────────────────────────────────────
+const userSchema = new mongoose.Schema(
+  {
+    username:     { type: String, required: true, unique: true, trim: true, lowercase: true },
+    passwordHash: { type: String, required: true },
+    role:         { type: String, enum: ["admin", "user"], default: "user" },
+  },
+  { timestamps: true }
+);
+const User = mongoose.model("User", userSchema);
+
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
@@ -65,7 +81,56 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// ── Password routes ─────────────────────────────────────────────────────────
+// ── JWT Auth Middleware ───────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Authentication required." });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token." });
+  }
+}
+
+// ── Auth Routes ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/auth/login
+ * Body: { username, password }
+ * Returns: { token, user: { id, username, role } }
+ */
+app.post("/api/auth/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password are required." });
+  }
+  try {
+    const user = await User.findOne({ username: username.trim().toLowerCase() });
+    if (!user) return res.status(401).json({ error: "Invalid credentials." });
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: "Invalid credentials." });
+    const token = jwt.sign(
+      { id: user._id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    return res.json({ token, user: { id: user._id, username: user.username, role: user.role } });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Returns current user from token
+ */
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
 
 /**
  * POST /api/auth/hash
@@ -129,7 +194,7 @@ app.get("/api/proxy", async (req, res) => {
 // ── Students ─────────────────────────────────────────────────────────────────
 
 // GET /api/students  → list all students sorted by last name
-app.get("/api/students", async (_req, res) => {
+app.get("/api/students", requireAuth, async (_req, res) => {
   try {
     const students = await Student.find().sort({ lastName: 1, firstName: 1 });
     return res.json(students);
@@ -139,7 +204,7 @@ app.get("/api/students", async (_req, res) => {
 });
 
 // POST /api/students  → create a new student
-app.post("/api/students", async (req, res) => {
+app.post("/api/students", requireAuth, async (req, res) => {
   const fields = req.body;
   if (!fields.firstName || !fields.lastName) {
     return res.status(400).json({ error: "firstName and lastName are required." });
@@ -153,7 +218,7 @@ app.post("/api/students", async (req, res) => {
 });
 
 // POST /api/students/bulk  → insert multiple students (seed / import)
-app.post("/api/students/bulk", async (req, res) => {
+app.post("/api/students/bulk", requireAuth, async (req, res) => {
   const { students } = req.body;
   if (!Array.isArray(students) || students.length === 0) {
     return res.status(400).json({ error: "students must be a non-empty array." });
@@ -167,7 +232,7 @@ app.post("/api/students/bulk", async (req, res) => {
 });
 
 // PUT /api/students/:id  → update a student
-app.put("/api/students/:id", async (req, res) => {
+app.put("/api/students/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid student ID." });
@@ -190,7 +255,7 @@ app.put("/api/students/:id", async (req, res) => {
 });
 
 // DELETE /api/students/:id  → remove a student
-app.delete("/api/students/:id", async (req, res) => {
+app.delete("/api/students/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid student ID." });
@@ -241,7 +306,7 @@ app.get("/api/attendance/report", async (_req, res) => {
 });
 
 // GET /api/attendance/:date  → attendance record for a specific date (YYYY-MM-DD)
-app.get("/api/attendance/:date", async (req, res) => {
+app.get("/api/attendance/:date", requireAuth, async (req, res) => {
   const { date } = req.params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: "Date must be in YYYY-MM-DD format." });
@@ -256,7 +321,7 @@ app.get("/api/attendance/:date", async (req, res) => {
 
 // POST /api/attendance  → save (upsert) attendance for a date
 // Body: { date: "YYYY-MM-DD", records: [{ studentId, present }] }
-app.post("/api/attendance", async (req, res) => {
+app.post("/api/attendance", requireAuth, async (req, res) => {
   const { date, records } = req.body;
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: "date (YYYY-MM-DD) is required." });
@@ -282,6 +347,20 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+async function ensureAdminAccount() {
+  const existing = await User.findOne({ username: "admin" });
+  if (!existing) {
+    const passwordHash = await bcrypt.hash("Wecanlearn99@", 12);
+    await User.create({ username: "admin", passwordHash, role: "admin" });
+    console.log("✅ Admin account created (username: admin)");
+  }
+}
+
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+  try {
+    await ensureAdminAccount();
+  } catch (err) {
+    console.error("⚠️  Could not ensure admin account:", err.message);
+  }
 });

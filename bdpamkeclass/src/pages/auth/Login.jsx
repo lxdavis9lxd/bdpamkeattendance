@@ -1,37 +1,45 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/context/AuthContext";
+import bdpamkeLogo from "@/artifacts/BDPAmke.avif";
 
-export default function Login({ onSubmit }) {
-  const [email, setEmail] = useState("");
+export default function Login() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError("Email and password are required.");
+    if (!username || !password) {
+      setError("Username and password are required.");
       return;
     }
     setError("");
-    if (onSubmit) onSubmit({ email, password, rememberMe });
+    setLoading(true);
+    try {
+      await login(username, password);
+      navigate("/");
+    } catch (err) {
+      setError(err?.response?.data?.error || "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Sign In</CardTitle>
-            <Badge variant="outline">shadcn/ui</Badge>
-          </div>
+    <div className="flex items-center justify-center min-h-screen">
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="items-center gap-2">
+          <img src={bdpamkeLogo} alt="BDPAMKE" className="h-14 w-auto object-contain" />
+          <CardTitle className="text-xl">Sign In</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -41,13 +49,14 @@ export default function Login({ onSubmit }) {
               </Alert>
             )}
             <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                placeholder="admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
               />
             </div>
             <div className="space-y-1">
@@ -58,27 +67,22 @@ export default function Login({ onSubmit }) {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="remember"
-                checked={rememberMe}
-                onCheckedChange={setRememberMe}
-              />
-              <Label htmlFor="remember" className="text-sm">Remember me</Label>
-            </div>
-            <Button type="submit" className="w-full">
-              Sign In
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Signing in…" : "Sign In"}
             </Button>
           </form>
-          <Separator className="my-4" />
-          <p className="text-sm text-center text-gray-600">
-            Don't have an account?{" "}
-            <a href="/register" className="text-blue-600 hover:underline">
-              Create one
-            </a>
-          </p>
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => navigate("/report")}
+              className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+            >
+              Continue as Guest (Report only)
+            </button>
+          </div>
         </CardContent>
       </Card>
     </div>
