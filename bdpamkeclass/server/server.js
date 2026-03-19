@@ -21,11 +21,20 @@ const studentSchema = new mongoose.Schema(
   {
     firstName:       { type: String, required: true, trim: true },
     lastName:        { type: String, required: true, trim: true },
-    phone:           { type: String, trim: true },
     email:           { type: String, trim: true },
+    laptopNumber:    { type: String, trim: true },
+    cellPhone:       { type: String, trim: true },
+    homePhone:       { type: String, trim: true },
+    dateOfBirth:     { type: String, trim: true },
     grade:           { type: String, trim: true },
-    parentName:      { type: String, trim: true },
-    parentPhone:     { type: String, trim: true },
+    school:          { type: String, trim: true },
+    shirtSize:       { type: String, trim: true },
+    parentFirstName: { type: String, trim: true },
+    parentLastName:  { type: String, trim: true },
+    parentCellPhone: { type: String, trim: true },
+    parentEmail:     { type: String, trim: true },
+    address1:        { type: String, trim: true },
+    address2:        { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -131,13 +140,27 @@ app.get("/api/students", async (_req, res) => {
 
 // POST /api/students  → create a new student
 app.post("/api/students", async (req, res) => {
-  const { firstName, lastName, phone, email, grade, parentName, parentPhone } = req.body;
-  if (!firstName || !lastName) {
+  const fields = req.body;
+  if (!fields.firstName || !fields.lastName) {
     return res.status(400).json({ error: "firstName and lastName are required." });
   }
   try {
-    const student = await Student.create({ firstName, lastName, phone, email, grade, parentName, parentPhone });
+    const student = await Student.create(fields);
     return res.status(201).json(student);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/students/bulk  → insert multiple students (seed / import)
+app.post("/api/students/bulk", async (req, res) => {
+  const { students } = req.body;
+  if (!Array.isArray(students) || students.length === 0) {
+    return res.status(400).json({ error: "students must be a non-empty array." });
+  }
+  try {
+    const inserted = await Student.insertMany(students, { ordered: false });
+    return res.status(201).json({ inserted: inserted.length });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -149,14 +172,14 @@ app.put("/api/students/:id", async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid student ID." });
   }
-  const { firstName, lastName, phone, email, grade, parentName, parentPhone } = req.body;
-  if (!firstName || !lastName) {
+  const fields = req.body;
+  if (!fields.firstName || !fields.lastName) {
     return res.status(400).json({ error: "firstName and lastName are required." });
   }
   try {
     const updated = await Student.findByIdAndUpdate(
       id,
-      { firstName, lastName, phone, email, grade, parentName, parentPhone },
+      fields,
       { new: true, runValidators: true }
     );
     if (!updated) return res.status(404).json({ error: "Student not found." });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
-import { CalendarIcon, Save } from "lucide-react";
+import { CalendarIcon, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import { Calendar } from "@/components/ui/calendar";
@@ -15,11 +15,12 @@ import { Badge } from "@/components/ui/badge";
 export default function Attendance() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [students, setStudents]         = useState([]);
-  const [present, setPresent]           = useState({}); // { studentId: boolean }
+  const [present, setPresent]           = useState({});
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingSession, setLoadingSession]   = useState(false);
   const [saving, setSaving]             = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [hasSavedData, setHasSavedData] = useState(false);
 
   // Load full student roster once
   useEffect(() => {
@@ -33,14 +34,18 @@ export default function Attendance() {
   // Load saved attendance whenever the date changes
   const loadSession = useCallback(async (date) => {
     setLoadingSession(true);
+    setPresent({});        // immediately clear stale checkmarks
+    setHasSavedData(false);
     const dateStr = format(date, "yyyy-MM-dd");
     try {
       const { data } = await axios.get(`/api/attendance/${dateStr}`);
+      const records = data.records || [];
       const map = {};
-      (data.records || []).forEach((r) => {
-        map[r.studentId] = r.present;
+      records.forEach((r) => {
+        map[String(r.studentId)] = r.present;  // coerce to string
       });
       setPresent(map);
+      setHasSavedData(records.length > 0);
     } catch {
       toast.error("Failed to load attendance for this date.");
     } finally {
@@ -53,12 +58,12 @@ export default function Attendance() {
   }, [selectedDate, loadSession]);
 
   function togglePresent(studentId) {
-    setPresent((prev) => ({ ...prev, [studentId]: !prev[studentId] }));
+    setPresent((prev) => ({ ...prev, [String(studentId)]: !prev[String(studentId)] }));
   }
 
   function markAll(value) {
     const map = {};
-    students.forEach((s) => (map[s._id] = value));
+    students.forEach((s) => (map[String(s._id)] = value));
     setPresent(map);
   }
 
@@ -67,11 +72,14 @@ export default function Attendance() {
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const records = students.map((s) => ({
       studentId: s._id,
-      present:   !!present[s._id],
+      present:   !!present[String(s._id)],
     }));
     try {
       await axios.post("/api/attendance", { date: dateStr, records });
       toast.success(`Attendance saved for ${format(selectedDate, "MMMM d, yyyy")}`);
+      setHasSavedData(true);
+      // Reload from DB to confirm what was persisted
+      await loadSession(selectedDate);
     } catch {
       toast.error("Failed to save attendance.");
     } finally {
@@ -79,7 +87,7 @@ export default function Attendance() {
     }
   }
 
-  const presentCount = students.filter((s) => !!present[s._id]).length;
+  const presentCount = students.filter((s) => !!present[String(s._id)]).length;
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -111,6 +119,12 @@ export default function Attendance() {
         <Badge variant="outline">
           {presentCount} / {students.length} present
         </Badge>
+        {hasSavedData && (
+          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Saved data loaded
+          </span>
+        )}
       </div>
 
       <Card>
@@ -146,12 +160,12 @@ export default function Attendance() {
                 <li
                   key={s._id}
                   className={`flex items-center gap-4 py-3 px-2 rounded transition-colors ${
-                    present[s._id] ? "bg-green-50 dark:bg-green-950/30" : ""
+                    present[String(s._id)] ? "bg-green-50 dark:bg-green-950/30" : ""
                   }`}
                 >
                   <Checkbox
                     id={`student-${s._id}`}
-                    checked={!!present[s._id]}
+                    checked={!!present[String(s._id)]}
                     onCheckedChange={() => togglePresent(s._id)}
                   />
                   <Label
@@ -163,7 +177,7 @@ export default function Attendance() {
                   <span className="text-sm text-muted-foreground">
                     Grade {s.grade || "—"}
                   </span>
-                  {present[s._id] && (
+                  {present[String(s._id)] && (
                     <Badge className="bg-green-500 text-white text-xs">Present</Badge>
                   )}
                 </li>
