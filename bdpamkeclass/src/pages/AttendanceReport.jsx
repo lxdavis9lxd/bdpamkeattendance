@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,24 @@ export default function AttendanceReport() {
 
   const totalTracked = totalDates.length;
 
+  function exportCSV() {
+    const sortedDates = [...totalDates].sort();
+    const headers = ["Last Name", "First Name", "Grade", "Days Present", "Days Missed", "Attendance Rate", ...sortedDates];
+    const rows = report.map(({ student, daysPresent, daysMissed, presentDates }) => {
+      const rate = totalTracked === 0 ? "0%" : `${Math.round((daysPresent / totalTracked) * 100)}%`;
+      const dateCols = sortedDates.map((d) => (presentDates.includes(d) ? "P" : "A"));
+      return [student.lastName, student.firstName, student.grade || "", daysPresent, daysMissed, rate, ...dateCols];
+    });
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bdpamke-attendance-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -43,10 +61,16 @@ export default function AttendanceReport() {
             {totalTracked} day{totalTracked !== 1 ? "s" : ""} tracked
           </p>
         </div>
-        <Button variant="outline" onClick={loadReport} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadReport} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button onClick={exportCSV} disabled={loading || report.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}
