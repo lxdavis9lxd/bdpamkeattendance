@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import axios from "axios";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { UserPlus, Trash2, Pencil } from "lucide-react";
+
+const PROGRAM_STATUS_OPTIONS = ["Active", "Inactive", "Graduated", "Withdrawn", "Pending"];
 
 function Field({ label, id, reg, error, type = "text", placeholder }) {
   return (
@@ -27,7 +33,7 @@ function Field({ label, id, reg, error, type = "text", placeholder }) {
 
 function StudentForm({ defaultValues, onSuccess }) {
   const isEdit = !!defaultValues;
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, reset, control, formState: { errors, isSubmitting } } = useForm({
     defaultValues: defaultValues || {},
   });
 
@@ -87,6 +93,29 @@ function StudentForm({ defaultValues, onSuccess }) {
       </div>
 
       <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Program</p>
+        <div className="space-y-1">
+          <Label htmlFor="programStatus">Program Status</Label>
+          <Controller
+            name="programStatus"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value || ""}>
+                <SelectTrigger id="programStatus">
+                  <SelectValue placeholder="Select status…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROGRAM_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+      </div>
+
+      <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Parent / Guardian</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Parent First Name" id="parentFirstName" reg={register("parentFirstName")} placeholder="John" />
@@ -106,6 +135,8 @@ function StudentForm({ defaultValues, onSuccess }) {
 }
 
 export default function Students() {
+  const { user } = useAuth();
+  const isViewer = user?.role === "viewer";
   const [students, setStudents]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [dialogOpen, setDialogOpen]   = useState(false);
@@ -139,7 +170,8 @@ export default function Students() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Students</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {!isViewer && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <UserPlus className="mr-2 h-4 w-4" />
@@ -153,8 +185,10 @@ export default function Students() {
             <StudentForm onSuccess={() => { setDialogOpen(false); loadStudents(); }} />
           </DialogContent>
         </Dialog>
+        )}
 
-        <Dialog open={!!editStudent} onOpenChange={(open) => { if (!open) setEditStudent(null); }}>
+        {!isViewer && (
+          <Dialog open={!!editStudent} onOpenChange={(open) => { if (!open) setEditStudent(null); }}>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Student</DialogTitle>
@@ -167,6 +201,7 @@ export default function Students() {
             )}
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <Card>
@@ -203,7 +238,8 @@ export default function Students() {
                     <TableHead>Parent Email</TableHead>
                     <TableHead>Address 1</TableHead>
                     <TableHead>Address 2</TableHead>
-                    <TableHead className="w-20"></TableHead>
+                    <TableHead>Program Status</TableHead>
+                    {!isViewer && <TableHead className="w-20"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -225,6 +261,8 @@ export default function Students() {
                       <TableCell>{s.parentEmail || "—"}</TableCell>
                       <TableCell>{s.address1 || "—"}</TableCell>
                       <TableCell>{s.address2 || "—"}</TableCell>
+                      <TableCell>{s.programStatus || "—"}</TableCell>
+                      {!isViewer && (
                       <TableCell>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700 h-7 w-7" onClick={() => setEditStudent(s)}>
@@ -235,6 +273,7 @@ export default function Students() {
                           </Button>
                         </div>
                       </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

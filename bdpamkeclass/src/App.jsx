@@ -7,6 +7,7 @@ import ComponentTest from "./pages/ComponentTest.jsx";
 import Students from "./pages/Students.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import AttendanceReport from "./pages/AttendanceReport.jsx";
+import RoleRequests from "./pages/RoleRequests.jsx";
 import bdpamkeLogo from "./artifacts/BDPAmke.avif";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 
@@ -17,10 +18,14 @@ const navLinks = [
   { to: "/report", label: "Report" },
 ];
 
-function ProtectedRoute({ children }) {
+// Allows admin and viewer roles (or any role if allowedRoles not specified)
+function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 }
 
@@ -53,6 +58,20 @@ function Nav() {
           {label}
         </NavLink>
       ))}
+      {user?.role === "admin" && (
+        <NavLink
+          to="/role-requests"
+          className={({ isActive }) =>
+            `text-sm font-medium transition-colors ${
+              isActive
+                ? "text-teal-300 underline underline-offset-4"
+                : "text-yellow-400/80 hover:text-yellow-300"
+            }`
+          }
+        >
+          Role Requests
+        </NavLink>
+      )}
       <div className="ml-auto flex items-center gap-3">
         {user && (
           <>
@@ -79,9 +98,10 @@ function AppRoutes() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register onSubmit={() => { toast.success("Registration submitted!"); }} />} />
-          <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
-          <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
+          <Route path="/students" element={<ProtectedRoute allowedRoles={["admin", "viewer"]}><Students /></ProtectedRoute>} />
+          <Route path="/attendance" element={<ProtectedRoute allowedRoles={["admin"]}><Attendance /></ProtectedRoute>} />
           <Route path="/report" element={<AttendanceReport />} />
+          <Route path="/role-requests" element={<ProtectedRoute allowedRoles={["admin"]}><RoleRequests /></ProtectedRoute>} />
           <Route path="/component-test" element={<ComponentTest />} />
         </Routes>
       </main>

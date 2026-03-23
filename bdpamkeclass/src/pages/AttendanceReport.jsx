@@ -36,11 +36,11 @@ export default function AttendanceReport() {
 
   function exportCSV() {
     const sortedDates = [...totalDates].sort();
-    const headers = ["Last Name", "First Name", "Grade", "Days Present", "Days Missed", "Attendance Rate", ...sortedDates];
+    const headers = ["Last Name", "First Name", "Grade", "Program Status", "Days Present", "Days Missed", "Attendance Rate", ...sortedDates];
     const rows = report.map(({ student, daysPresent, daysMissed, presentDates }) => {
       const rate = totalTracked === 0 ? "0%" : `${Math.round((daysPresent / totalTracked) * 100)}%`;
       const dateCols = sortedDates.map((d) => (presentDates.includes(d) ? "P" : "A"));
-      return [student.lastName, student.firstName, student.grade || "", daysPresent, daysMissed, rate, ...dateCols];
+      return [student.lastName, student.firstName, student.grade || "", student.programStatus || "", daysPresent, daysMissed, rate, ...dateCols];
     });
     const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -128,6 +128,7 @@ export default function AttendanceReport() {
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Grade</TableHead>
+                    <TableHead>Program Status</TableHead>
                     <TableHead className="text-center">Days Present</TableHead>
                     <TableHead className="text-center">Days Missed</TableHead>
                     <TableHead className="w-48">Attendance Rate</TableHead>
@@ -146,6 +147,7 @@ export default function AttendanceReport() {
                           {student.lastName}, {student.firstName}
                         </TableCell>
                         <TableCell>{student.grade || "—"}</TableCell>
+                        <TableCell>{student.programStatus || "—"}</TableCell>
                         <TableCell className="text-center">
                           <Badge className="bg-green-500 text-white">
                             {daysPresent}
