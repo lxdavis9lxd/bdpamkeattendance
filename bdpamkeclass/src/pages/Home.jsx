@@ -58,23 +58,23 @@ function ViewerRequestForm() {
     <form onSubmit={handleSubmit} className="space-y-3 mt-2">
       <div className="space-y-1">
         <Label htmlFor="req-name">Full Name *</Label>
-        <Input id="req-name" placeholder="Jane Doe" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input id="req-name" placeholder="Jane Doe" value={name} onChange={(e) => setName(e.target.value)} className="bg-white text-gray-900 border-gray-300 focus:bg-blue-50" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="req-email">Email Address *</Label>
-        <Input id="req-email" type="email" placeholder="jane@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input id="req-email" type="email" placeholder="jane@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white text-gray-900 border-gray-300 focus:bg-blue-50" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="req-login">Desired Login *</Label>
-        <Input id="req-login" placeholder="jane.doe" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" />
+        <Input id="req-login" placeholder="jane.doe" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" className="bg-white text-gray-900 border-gray-300 focus:bg-blue-50" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="req-password">Desired Password *</Label>
-        <Input id="req-password" type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        <Input id="req-password" type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className="bg-white text-gray-900 border-gray-300 focus:bg-blue-50" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="req-msg">Reason for Access</Label>
-        <Textarea id="req-msg" placeholder="Briefly describe why you need access…" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+        <Textarea id="req-msg" placeholder="Briefly describe why you need access…" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="bg-white text-gray-900 border-gray-300 focus:bg-blue-50" />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Submitting…" : "Request Viewer Access"}
@@ -137,12 +137,12 @@ export default function Home() {
 
       {canRequest && (
         <div className="mt-10 w-full max-w-md text-left">
-          <Card>
+          <Card className="bg-white text-gray-900 shadow-lg">
             <CardHeader>
               <CardTitle className="text-base">🔒 Request Student Viewer Access</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              <p className="mb-2">Need read-only access to the student roster? Submit a request below and an admin will review it.</p>
+              <p className="mb-2 text-gray-600">Need read-only access to the student roster? Submit a request below and an admin will review it.</p>
               <ViewerRequestForm />
             </CardContent>
           </Card>

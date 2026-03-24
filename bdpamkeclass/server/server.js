@@ -1,11 +1,10 @@
 "use strict";
-const express = require("express");
-const cors = require("cors");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose");
-const nodemailer = require("nodemailer");
-const { google } = require("googleapis");
+const express    = require("express");
+const cors       = require("cors");
+const bcrypt     = require("bcryptjs");
+const jwt        = require("jsonwebtoken");
+const mongoose   = require("mongoose");
+const { Resend } = require("resend");
 const { ApiClient } = require("./utils/apiClient");
 
 const app = express();
@@ -72,6 +71,7 @@ const userSchema = new mongoose.Schema(
     username:     { type: String, required: true, unique: true, trim: true, lowercase: true },
     passwordHash: { type: String, required: true },
     role:         { type: String, enum: ["admin", "user", "viewer"], default: "user" },
+    email:        { type: String, trim: true, lowercase: true },
   },
   { timestamps: true }
 );
@@ -93,42 +93,32 @@ const roleRequestSchema = new mongoose.Schema(
 );
 const RoleRequest = mongoose.model("RoleRequest", roleRequestSchema);
 
-// ── Email helper (Gmail OAuth2) ──────────────────────────────────────────────
+const passwordResetSchema = new mongoose.Schema({
+  userId:     { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  codeHash:   { type: String, required: true },
+  resetToken: { type: String },
+  attempts:   { type: Number, default: 0 },
+  expiresAt:  { type: Date, required: true },
+  used:       { type: Boolean, default: false },
+});
+const PasswordReset = mongoose.model("PasswordReset", passwordResetSchema);
+
+// ── Email helper (Resend) ──────────────────────────────────────────────────────────────────
 const ADMIN_EMAIL = "lxdavis9lxd@gmail.com";
 
-function createOAuth2Client() {
-  const client = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET,
-    "https://developers.google.com/oauthplayground"
-  );
-  client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-  return client;
-}
-
 async function sendEmail({ to, subject, html }) {
-  const required = ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN", "GMAIL_USER"];
-  const missing = required.filter((k) => !process.env[k]);
-  if (missing.length) {
-    console.log(`[EMAIL - OAuth2 not configured (missing: ${missing.join(", ")})]
-  To: ${to}
-  Subject: ${subject}`);
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[EMAIL - Resend not configured (missing RESEND_API_KEY)]\n  To: ${to}\n  Subject: ${subject}`);
     return;
   }
-  const oAuth2Client = createOAuth2Client();
-  const { token: accessToken } = await oAuth2Client.getAccessToken();
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: process.env.GMAIL_USER,
-      clientId: process.env.GMAIL_CLIENT_ID,
-      clientSecret: process.env.GMAIL_CLIENT_SECRET,
-      refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-      accessToken,
-    },
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { error } = await resend.emails.send({
+    from: process.env.RESEND_FROM || `BDPAMKE Attendance <${ADMIN_EMAIL}>`,
+    to,
+    subject,
+    html,
   });
-  await transporter.sendMail({ from: process.env.GMAIL_USER, to, subject, html });
+  if (error) throw new Error(error.message);
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────────
@@ -324,7 +314,7 @@ app.put("/api/role-requests/:id/approve", requireAuth, async (req, res) => {
 
     const chosenPassword = request.requestedPassword || ("Viewer_" + Math.random().toString(36).slice(2, 10));
     const passwordHash = await bcrypt.hash(chosenPassword, 12);
-    await User.create({ username, passwordHash, role: "viewer" });
+    await User.create({ username, passwordHash, role: "viewer", email: request.email.trim().toLowerCase() });
 
     request.status = "approved";
     request.reviewedAt = new Date();
@@ -389,6 +379,94 @@ app.put("/api/role-requests/:id/deny", requireAuth, async (req, res) => {
     request.reviewedAt = new Date();
     await request.save();
     return res.json({ message: "Denied." });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Password Reset ────────────────────────────────────────────────────────────
+
+// POST /api/auth/forgot-password → send 6-digit code to user's email
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  // Always return same message to prevent email enumeration
+  const ok = { message: "If that email is registered, a 6-digit code has been sent." };
+  try {
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user) return res.json(ok);
+    // Remove any previous unused resets
+    await PasswordReset.deleteMany({ userId: user._id });
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+    await PasswordReset.create({ userId: user._id, codeHash, expiresAt });
+    await sendEmail({
+      to: user.email,
+      subject: "BDPAMKE Password Reset Code",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+          <div style="background: #0f1117; padding: 20px 24px;">
+            <h2 style="color: #5eead4; margin: 0; font-size: 18px;">BDPAMKE Attendance</h2>
+          </div>
+          <div style="padding: 24px;">
+            <p style="margin-top: 0;">Hi <strong>${user.username}</strong>,</p>
+            <p>We received a request to reset your password. Use the code below. It expires in <strong>30 minutes</strong>.</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; font-family: monospace; color: #0f1117;">${code}</span>
+            </div>
+            <p style="font-size: 13px; color: #64748b;">If you did not request this, you can safely ignore this email.</p>
+          </div>
+        </div>`,
+    });
+    return res.json(ok);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/verify-reset-code → verify 6-digit code, return short-lived reset JWT
+app.post("/api/auth/verify-reset-code", async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: "Email and code are required." });
+  const invalid = { error: "Invalid or expired code. Please try again." };
+  try {
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user) return res.status(400).json(invalid);
+    const record = await PasswordReset.findOne({ userId: user._id, used: false, expiresAt: { $gt: new Date() } });
+    if (!record) return res.status(400).json(invalid);
+    record.attempts += 1;
+    if (record.attempts > 5) {
+      await record.deleteOne();
+      return res.status(400).json({ error: "Too many incorrect attempts. Please request a new code." });
+    }
+    await record.save();
+    const valid = await bcrypt.compare(code.toString().trim(), record.codeHash);
+    if (!valid) return res.status(400).json(invalid);
+    // Mark used and issue a 10-minute reset JWT
+    record.used = true;
+    await record.save();
+    const resetToken = jwt.sign({ id: user._id.toString(), purpose: "password-reset" }, JWT_SECRET, { expiresIn: "10m" });
+    return res.json({ resetToken });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/reset-password → set new password using reset JWT
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { resetToken, newPassword } = req.body;
+  if (!resetToken || !newPassword) return res.status(400).json({ error: "Reset token and new password are required." });
+  if (newPassword.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  try {
+    let payload;
+    try { payload = jwt.verify(resetToken, JWT_SECRET); } catch {
+      return res.status(400).json({ error: "Reset session expired. Please start over." });
+    }
+    if (payload.purpose !== "password-reset") return res.status(400).json({ error: "Invalid reset token." });
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await User.findByIdAndUpdate(payload.id, { passwordHash });
+    return res.json({ message: "Password updated successfully. You can now sign in." });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

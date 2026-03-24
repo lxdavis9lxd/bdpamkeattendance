@@ -57,6 +57,7 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                className="text-white"
               />
             </div>
             <div className="space-y-1">
@@ -68,6 +69,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
+                className="text-white"
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
@@ -81,6 +83,15 @@ export default function Login() {
               className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
             >
               Continue as Guest (Report only)
+            </button>
+          </div>
+          <div className="mt-2 text-center">
+            <button
+              type="button"
+              onClick={() => navigate("/forgot-password")}
+              className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+            >
+              Forgot Password?
             </button>
           </div>
         </CardContent>

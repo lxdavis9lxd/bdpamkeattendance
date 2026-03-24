@@ -8,6 +8,7 @@ import Students from "./pages/Students.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import AttendanceReport from "./pages/AttendanceReport.jsx";
 import RoleRequests from "./pages/RoleRequests.jsx";
+import ForgotPassword from "./pages/auth/ForgotPassword.jsx";
 import bdpamkeLogo from "./artifacts/BDPAmke.avif";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 
@@ -97,6 +98,7 @@ function AppRoutes() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/register" element={<Register onSubmit={() => { toast.success("Registration submitted!"); }} />} />
           <Route path="/students" element={<ProtectedRoute allowedRoles={["admin", "viewer"]}><Students /></ProtectedRoute>} />
           <Route path="/attendance" element={<ProtectedRoute allowedRoles={["admin"]}><Attendance /></ProtectedRoute>} />
