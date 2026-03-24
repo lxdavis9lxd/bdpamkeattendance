@@ -464,9 +464,94 @@ app.post("/api/auth/reset-password", async (req, res) => {
       return res.status(400).json({ error: "Reset session expired. Please start over." });
     }
     if (payload.purpose !== "password-reset") return res.status(400).json({ error: "Invalid reset token." });
+    const primaryUser = await User.findById(payload.id);
+    if (!primaryUser) return res.status(400).json({ error: "User not found." });
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await User.findByIdAndUpdate(payload.id, { passwordHash });
-    return res.json({ message: "Password updated successfully. You can now sign in." });
+    // Update ALL accounts that share the same email
+    const allUsers = await User.find({ email: primaryUser.email });
+    await User.updateMany({ email: primaryUser.email }, { passwordHash });
+    const updatedAccounts = allUsers.map(u => u.username);
+    return res.json({ message: "Password updated successfully. You can now sign in.", updatedAccounts });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: User Management ────────────────────────────────────────────────────
+
+function requireAdmin(req, res, next) {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin access required." });
+  next();
+}
+
+// GET /api/admin/users → list all users
+app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const users = await User.find({}, { passwordHash: 0 }).sort({ createdAt: 1 });
+    return res.json(users);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/users/:id/role → change a user's role
+app.patch("/api/admin/users/:id/role", requireAuth, requireAdmin, async (req, res) => {
+  const { role } = req.body;
+  if (!["admin", "user", "viewer"].includes(role)) {
+    return res.status(400).json({ error: "Invalid role. Must be admin, user, or viewer." });
+  }
+  // Prevent an admin from demoting themselves
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: "You cannot change your own role." });
+  }
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true, select: "-passwordHash" });
+    if (!user) return res.status(404).json({ error: "User not found." });
+    return res.json(user);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/users/:id/reset-password → set a new password for a user
+app.post("/api/admin/users/:id/reset-password", requireAuth, requireAdmin, async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters." });
+  }
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found." });
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await User.updateMany({ email: user.email || null, _id: user._id }, { passwordHash });
+    // If user has an email, update all accounts sharing that email
+    let updatedCount = 1;
+    if (user.email) {
+      const result = await User.updateMany({ email: user.email }, { passwordHash });
+      updatedCount = result.modifiedCount;
+    } else {
+      await User.findByIdAndUpdate(req.params.id, { passwordHash });
+    }
+    return res.json({ message: `Password reset successfully. ${updatedCount} account(s) updated.` });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/users/:id → delete a user (admin accounts cannot be deleted)
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+  // Prevent self-deletion
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: "You cannot delete your own account." });
+  }
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.role === "admin") {
+      return res.status(403).json({ error: "Admin accounts cannot be deleted." });
+    }
+    await user.deleteOne();
+    return res.json({ message: "User deleted." });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

@@ -167,8 +167,8 @@ function StepNewPassword({ resetToken, onDone }) {
     setError("");
     setLoading(true);
     try {
-      await axios.post("/api/auth/reset-password", { resetToken, newPassword });
-      onDone();
+      const { data } = await axios.post("/api/auth/reset-password", { resetToken, newPassword });
+      onDone(data.updatedAccounts || []);
     } catch (err) {
       setError(err?.response?.data?.error || "Failed to update password.");
     } finally {
@@ -220,6 +220,7 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [done, setDone] = useState(false);
+  const [updatedAccounts, setUpdatedAccounts] = useState([]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">
@@ -237,8 +238,23 @@ export default function ForgotPassword() {
         </CardHeader>
         <CardContent>
           {done ? (
-            <div className="space-y-4 text-center">
-              <p className="text-green-600 font-medium">✅ Your password has been updated successfully.</p>
+            <div className="space-y-4">
+              <p className="text-green-600 font-medium text-center">✅ Your password has been updated successfully.</p>
+              {updatedAccounts.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-md p-3">
+                  <p className="text-sm font-semibold text-slate-700 mb-2">
+                    {updatedAccounts.length === 1 ? "Account updated:" : `${updatedAccounts.length} accounts updated:`}
+                  </p>
+                  <ul className="space-y-1">
+                    {updatedAccounts.map((username) => (
+                      <li key={username} className="text-sm text-slate-600 flex items-center gap-2">
+                        <span className="text-teal-500">✓</span>
+                        <span className="font-mono">{username}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Button className="w-full" onClick={() => navigate("/login")}>
                 Sign In
               </Button>
@@ -248,7 +264,7 @@ export default function ForgotPassword() {
           ) : step === 1 ? (
             <StepCode email={email} onNext={(token) => { setResetToken(token); setStep(2); }} onResend={() => {}} />
           ) : (
-            <StepNewPassword resetToken={resetToken} onDone={() => setDone(true)} />
+            <StepNewPassword resetToken={resetToken} onDone={(accounts) => { setUpdatedAccounts(accounts); setDone(true); }} />
           )}
           {!done && (
             <div className="mt-4 text-center">

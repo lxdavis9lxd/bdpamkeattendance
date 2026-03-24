@@ -8,6 +8,7 @@ import Students from "./pages/Students.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import AttendanceReport from "./pages/AttendanceReport.jsx";
 import RoleRequests from "./pages/RoleRequests.jsx";
+import AdminUsers from "./pages/AdminUsers.jsx";
 import ForgotPassword from "./pages/auth/ForgotPassword.jsx";
 import bdpamkeLogo from "./artifacts/BDPAmke.avif";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
@@ -60,18 +61,32 @@ function Nav() {
         </NavLink>
       ))}
       {user?.role === "admin" && (
-        <NavLink
-          to="/role-requests"
-          className={({ isActive }) =>
-            `text-sm font-medium transition-colors ${
-              isActive
-                ? "text-teal-300 underline underline-offset-4"
-                : "text-yellow-400/80 hover:text-yellow-300"
-            }`
-          }
-        >
-          Role Requests
-        </NavLink>
+        <>
+          <NavLink
+            to="/role-requests"
+            className={({ isActive }) =>
+              `text-sm font-medium transition-colors ${
+                isActive
+                  ? "text-teal-300 underline underline-offset-4"
+                  : "text-yellow-400/80 hover:text-yellow-300"
+              }`
+            }
+          >
+            Role Requests
+          </NavLink>
+          <NavLink
+            to="/admin/users"
+            className={({ isActive }) =>
+              `text-sm font-medium transition-colors ${
+                isActive
+                  ? "text-teal-300 underline underline-offset-4"
+                  : "text-purple-400/80 hover:text-purple-300"
+              }`
+            }
+          >
+            Users
+          </NavLink>
+        </>
       )}
       <div className="ml-auto flex items-center gap-3">
         {user && (
@@ -104,6 +119,7 @@ function AppRoutes() {
           <Route path="/attendance" element={<ProtectedRoute allowedRoles={["admin"]}><Attendance /></ProtectedRoute>} />
           <Route path="/report" element={<AttendanceReport />} />
           <Route path="/role-requests" element={<ProtectedRoute allowedRoles={["admin"]}><RoleRequests /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute allowedRoles={["admin"]}><AdminUsers /></ProtectedRoute>} />
           <Route path="/component-test" element={<ComponentTest />} />
         </Routes>
       </main>
