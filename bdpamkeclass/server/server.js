@@ -79,13 +79,15 @@ const User = mongoose.model("User", userSchema);
 
 const roleRequestSchema = new mongoose.Schema(
   {
-    name:              { type: String, required: true, trim: true },
-    email:             { type: String, required: true, trim: true },
-    message:           { type: String, trim: true },
-    status:            { type: String, enum: ["pending", "approved", "denied"], default: "pending" },
-    reviewedAt:        { type: Date },
-    generatedUsername: { type: String },
-    generatedPassword: { type: String },
+    name:               { type: String, required: true, trim: true },
+    email:              { type: String, required: true, trim: true },
+    message:            { type: String, trim: true },
+    requestedUsername:  { type: String, trim: true },
+    requestedPassword:  { type: String },
+    status:             { type: String, enum: ["pending", "approved", "denied"], default: "pending" },
+    reviewedAt:         { type: Date },
+    generatedUsername:  { type: String },
+    generatedPassword:  { type: String },
   },
   { timestamps: true }
 );
@@ -250,8 +252,13 @@ app.get("/api/proxy", async (req, res) => {
 
 // POST /api/role-requests  → submit a viewer access request (public)
 app.post("/api/role-requests", async (req, res) => {
-  const { name, email, message } = req.body;
+  const { name, email, message, login, password } = req.body;
   if (!name || !email) return res.status(400).json({ error: "Name and email are required." });
+  if (!login || !password) return res.status(400).json({ error: "Login and password are required." });
+  const loginClean = login.trim().toLowerCase();
+  // Ensure requested login isn't already taken
+  const loginTaken = await User.findOne({ username: loginClean });
+  if (loginTaken) return res.status(409).json({ error: "That login name is already taken. Please choose another." });
   try {
     const existing = await RoleRequest.findOne({
       email: email.trim().toLowerCase(),
@@ -260,7 +267,13 @@ app.post("/api/role-requests", async (req, res) => {
     if (existing) {
       return res.status(409).json({ error: "A pending request already exists for this email." });
     }
-    await RoleRequest.create({ name: name.trim(), email: email.trim(), message: message?.trim() });
+    await RoleRequest.create({
+      name: name.trim(),
+      email: email.trim(),
+      message: message?.trim(),
+      requestedUsername: loginClean,
+      requestedPassword: password,
+    });
     await sendEmail({
       to: ADMIN_EMAIL,
       subject: "New Viewer Role Request — BDPAMKE",
@@ -295,20 +308,28 @@ app.put("/api/role-requests/:id/approve", requireAuth, async (req, res) => {
     if (!request) return res.status(404).json({ error: "Request not found." });
     if (request.status !== "pending") return res.status(400).json({ error: "Request is not pending." });
 
-    // Derive a unique username from the requester's name
-    const base = request.name.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "");
-    let username = base;
-    let counter = 1;
-    while (await User.findOne({ username })) username = `${base}${counter++}`;
+    // Use the login/password the requester chose; fall back to name-derived if missing (legacy records)
+    let username = request.requestedUsername;
+    if (!username) {
+      const base = request.name.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "");
+      username = base;
+      let counter = 1;
+      while (await User.findOne({ username })) username = `${base}${counter++}`;
+    } else {
+      // Ensure it's still available (could have been taken since request was submitted)
+      if (await User.findOne({ username })) {
+        return res.status(409).json({ error: `The requested login "${username}" is already taken. Please ask the requester to submit a new request with a different login.` });
+      }
+    }
 
-    const tempPassword = "Viewer_" + Math.random().toString(36).slice(2, 10);
-    const passwordHash = await bcrypt.hash(tempPassword, 12);
+    const chosenPassword = request.requestedPassword || ("Viewer_" + Math.random().toString(36).slice(2, 10));
+    const passwordHash = await bcrypt.hash(chosenPassword, 12);
     await User.create({ username, passwordHash, role: "viewer" });
 
     request.status = "approved";
     request.reviewedAt = new Date();
     request.generatedUsername = username;
-    request.generatedPassword = tempPassword;
+    request.generatedPassword = chosenPassword;
     await request.save();
 
     const loginUrl = process.env.CLIENT_ORIGIN || "http://localhost:3000";
@@ -334,7 +355,7 @@ app.put("/api/role-requests/:id/approve", requireAuth, async (req, res) => {
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #475569; font-size: 14px;">Password:</td>
-                  <td style="padding: 6px 0; font-weight: bold; font-size: 14px; font-family: monospace;">${tempPassword}</td>
+                  <td style="padding: 6px 0; font-weight: bold; font-size: 14px; font-family: monospace;">${chosenPassword}</td>
                 </tr>
               </table>
             </div>

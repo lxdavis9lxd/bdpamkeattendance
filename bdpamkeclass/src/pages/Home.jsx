@@ -10,9 +10,11 @@ import { toast } from "sonner";
 import axios from "axios";
 
 function ViewerRequestForm() {
-  const [name, setName]       = useState("");
-  const [email, setEmail]     = useState("");
-  const [message, setMessage] = useState("");
+  const [name, setName]         = useState("");
+  const [email, setEmail]       = useState("");
+  const [login, setLogin]       = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage]   = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -22,9 +24,19 @@ function ViewerRequestForm() {
       toast.error("Name and email are required.");
       return;
     }
+    if (!login.trim() || !password.trim()) {
+      toast.error("Login and password are required.");
+      return;
+    }
     setLoading(true);
     try {
-      await axios.post("/api/role-requests", { name: name.trim(), email: email.trim(), message: message.trim() });
+      await axios.post("/api/role-requests", {
+        name: name.trim(),
+        email: email.trim(),
+        login: login.trim(),
+        password: password.trim(),
+        message: message.trim(),
+      });
       setSubmitted(true);
       toast.success("Request submitted! You will be notified by email when approved.");
     } catch (err) {
@@ -37,7 +49,7 @@ function ViewerRequestForm() {
   if (submitted) {
     return (
       <p className="text-green-600 font-medium text-sm">
-        ✅ Your request has been submitted. You will receive an email with your login credentials once approved.
+        ✅ Your request has been submitted. You will receive an email confirmation once approved.
       </p>
     );
   }
@@ -51,6 +63,14 @@ function ViewerRequestForm() {
       <div className="space-y-1">
         <Label htmlFor="req-email">Email Address *</Label>
         <Input id="req-email" type="email" placeholder="jane@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="req-login">Desired Login *</Label>
+        <Input id="req-login" placeholder="jane.doe" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="req-password">Desired Password *</Label>
+        <Input id="req-password" type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="req-msg">Reason for Access</Label>

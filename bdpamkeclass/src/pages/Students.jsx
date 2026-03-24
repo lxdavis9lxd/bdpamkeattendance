@@ -239,7 +239,7 @@ export default function Students() {
                     <TableHead>Address 1</TableHead>
                     <TableHead>Address 2</TableHead>
                     <TableHead>Program Status</TableHead>
-                    {!isViewer && <TableHead className="w-20"></TableHead>}
+                    <TableHead className="w-20"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -262,18 +262,30 @@ export default function Students() {
                       <TableCell>{s.address1 || "—"}</TableCell>
                       <TableCell>{s.address2 || "—"}</TableCell>
                       <TableCell>{s.programStatus || "—"}</TableCell>
-                      {!isViewer && (
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700 h-7 w-7" onClick={() => setEditStudent(s)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${isViewer ? "text-gray-300 cursor-not-allowed" : "text-blue-500 hover:text-blue-700"}`}
+                            onClick={() => !isViewer && setEditStudent(s)}
+                            disabled={isViewer}
+                            title={isViewer ? "View only — editing disabled" : "Edit student"}
+                          >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700 h-7 w-7" onClick={() => deleteStudent(s._id, `${s.firstName} ${s.lastName}`)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${isViewer ? "text-gray-300 cursor-not-allowed" : "text-red-500 hover:text-red-700"}`}
+                            onClick={() => !isViewer && deleteStudent(s._id, `${s.firstName} ${s.lastName}`)}
+                            disabled={isViewer}
+                            title={isViewer ? "View only — deletion disabled" : "Delete student"}
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>
-                      )}
                     </TableRow>
                   ))}
                 </TableBody>

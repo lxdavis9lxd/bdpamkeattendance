@@ -101,6 +101,7 @@ export default function RoleRequests() {
                     <TableHead>Message</TableHead>
                     <TableHead>Requested</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Req. Login</TableHead>
                     <TableHead>Username</TableHead>
                     <TableHead>Password</TableHead>
                     <TableHead className="w-28">Actions</TableHead>
@@ -121,6 +122,9 @@ export default function RoleRequests() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium capitalize ${STATUS_COLORS[r.status]}`}>
                           {r.status}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs font-mono">
+                        {r.requestedUsername || "—"}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
                         {r.generatedUsername || "—"}
