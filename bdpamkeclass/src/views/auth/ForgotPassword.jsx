@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,7 +215,7 @@ function StepNewPassword({ resetToken, onDone }) {
 const STEP_TITLES = ["Reset Your Password", "Enter Verification Code", "Set New Password"];
 
 export default function ForgotPassword() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [step, setStep] = useState(0); // 0 = email, 1 = code, 2 = new password
   const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
@@ -226,7 +226,7 @@ export default function ForgotPassword() {
     <div className="flex items-center justify-center min-h-screen">
       <Card className="w-full max-w-sm shadow-lg">
         <CardHeader className="items-center gap-2">
-          <img src={bdpamkeLogo} alt="BDPAMKE" className="h-14 w-auto object-contain" />
+          <img src={bdpamkeLogo.src} alt="BDPAMKE" className="h-14 w-auto object-contain" />
           <CardTitle className="text-xl text-center">{done ? "Password Changed" : STEP_TITLES[step]}</CardTitle>
           {!done && (
             <div className="flex gap-1.5 mt-1">
@@ -255,7 +255,7 @@ export default function ForgotPassword() {
                   </ul>
                 </div>
               )}
-              <Button className="w-full" onClick={() => navigate("/login")}>
+              <Button className="w-full" onClick={() => router.push("/login")}>
                 Sign In
               </Button>
             </div>
@@ -270,7 +270,7 @@ export default function ForgotPassword() {
             <div className="mt-4 text-center">
               <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={() => router.push("/login")}
                 className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
               >
                 Back to Sign In

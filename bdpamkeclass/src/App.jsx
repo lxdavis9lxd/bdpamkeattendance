@@ -1,15 +1,19 @@
-import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { toast } from "sonner";
-import Home from "./pages/Home.jsx";
-import Login from "./pages/auth/Login.jsx";
-import Register from "./pages/auth/Register.jsx";
-import ComponentTest from "./pages/ComponentTest.jsx";
-import Students from "./pages/Students.jsx";
-import Attendance from "./pages/Attendance.jsx";
-import AttendanceReport from "./pages/AttendanceReport.jsx";
-import RoleRequests from "./pages/RoleRequests.jsx";
-import AdminUsers from "./pages/AdminUsers.jsx";
-import ForgotPassword from "./pages/auth/ForgotPassword.jsx";
+import Home from "./views/Home.jsx";
+import Login from "./views/auth/Login.jsx";
+import Register from "./views/auth/Register.jsx";
+import ComponentTest from "./views/ComponentTest.jsx";
+import Students from "./views/Students.jsx";
+import Attendance from "./views/Attendance.jsx";
+import AttendanceReport from "./views/AttendanceReport.jsx";
+import RoleRequests from "./views/RoleRequests.jsx";
+import AdminUsers from "./views/AdminUsers.jsx";
+import ForgotPassword from "./views/auth/ForgotPassword.jsx";
 import bdpamkeLogo from "./artifacts/BDPAmke.avif";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 
@@ -23,69 +27,73 @@ const navLinks = [
 // Allows admin and viewer roles (or any role if allowedRoles not specified)
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" replace />;
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
-  }
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (allowedRoles && !allowedRoles.includes(user.role)) {
+      router.replace("/");
+    }
+  }, [allowedRoles, loading, router, user]);
+
+  if (loading || !user) return null;
+  if (allowedRoles && !allowedRoles.includes(user.role)) return null;
   return children;
 }
 
 function Nav() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
 
   const handleLogout = () => {
     logout();
     toast.success("Signed out.");
-    navigate("/login");
+    router.push("/login");
   };
 
   return (
     <nav className="bg-[#0f1117] border-b border-white/10 px-6 py-2 flex items-center gap-6 shadow-lg">
-      <img src={bdpamkeLogo} alt="BDPAMKE" className="h-10 w-auto object-contain" />
+      <img src={bdpamkeLogo.src} alt="BDPAMKE" className="h-10 w-auto object-contain" />
       {navLinks.map(({ to, label, end }) => (
-        <NavLink
+        <Link
           key={to}
-          to={to}
-          end={end}
-          className={({ isActive }) =>
-            `text-sm font-medium transition-colors ${
-              isActive
-                ? "text-teal-300 underline underline-offset-4"
-                : "text-white/60 hover:text-white"
-            }`
-          }
+          href={to}
+          className={`text-sm font-medium transition-colors ${
+            (end ? pathname === to : pathname.startsWith(to))
+              ? "text-teal-300 underline underline-offset-4"
+              : "text-white/60 hover:text-white"
+          }`}
         >
           {label}
-        </NavLink>
+        </Link>
       ))}
       {user?.role === "admin" && (
         <>
-          <NavLink
-            to="/role-requests"
-            className={({ isActive }) =>
-              `text-sm font-medium transition-colors ${
-                isActive
-                  ? "text-teal-300 underline underline-offset-4"
-                  : "text-yellow-400/80 hover:text-yellow-300"
-              }`
-            }
+          <Link
+            href="/role-requests"
+            className={`text-sm font-medium transition-colors ${
+              pathname === "/role-requests"
+                ? "text-teal-300 underline underline-offset-4"
+                : "text-yellow-400/80 hover:text-yellow-300"
+            }`}
           >
             Role Requests
-          </NavLink>
-          <NavLink
-            to="/admin/users"
-            className={({ isActive }) =>
-              `text-sm font-medium transition-colors ${
-                isActive
-                  ? "text-teal-300 underline underline-offset-4"
-                  : "text-purple-400/80 hover:text-purple-300"
-              }`
-            }
+          </Link>
+          <Link
+            href="/admin/users"
+            className={`text-sm font-medium transition-colors ${
+              pathname === "/admin/users"
+                ? "text-teal-300 underline underline-offset-4"
+                : "text-purple-400/80 hover:text-purple-300"
+            }`}
           >
             Users
-          </NavLink>
+          </Link>
         </>
       )}
       <div className="ml-auto flex items-center gap-3">
@@ -106,22 +114,24 @@ function Nav() {
 }
 
 function AppRoutes() {
+  const pathname = usePathname();
+
+  let page = <Home />;
+  if (pathname === "/login") page = <Login />;
+  else if (pathname === "/forgot-password") page = <ForgotPassword />;
+  else if (pathname === "/register") page = <Register onSubmit={() => { toast.success("Registration submitted!"); }} />;
+  else if (pathname === "/students") page = <ProtectedRoute allowedRoles={["admin", "viewer"]}><Students /></ProtectedRoute>;
+  else if (pathname === "/attendance") page = <ProtectedRoute allowedRoles={["admin"]}><Attendance /></ProtectedRoute>;
+  else if (pathname === "/report") page = <AttendanceReport />;
+  else if (pathname === "/role-requests") page = <ProtectedRoute allowedRoles={["admin"]}><RoleRequests /></ProtectedRoute>;
+  else if (pathname === "/admin/users") page = <ProtectedRoute allowedRoles={["admin"]}><AdminUsers /></ProtectedRoute>;
+  else if (pathname === "/component-test") page = <ComponentTest />;
+
   return (
     <>
       <Nav />
       <main className="min-h-screen">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/register" element={<Register onSubmit={() => { toast.success("Registration submitted!"); }} />} />
-          <Route path="/students" element={<ProtectedRoute allowedRoles={["admin", "viewer"]}><Students /></ProtectedRoute>} />
-          <Route path="/attendance" element={<ProtectedRoute allowedRoles={["admin"]}><Attendance /></ProtectedRoute>} />
-          <Route path="/report" element={<AttendanceReport />} />
-          <Route path="/role-requests" element={<ProtectedRoute allowedRoles={["admin"]}><RoleRequests /></ProtectedRoute>} />
-          <Route path="/admin/users" element={<ProtectedRoute allowedRoles={["admin"]}><AdminUsers /></ProtectedRoute>} />
-          <Route path="/component-test" element={<ComponentTest />} />
-        </Routes>
+        {page}
       </main>
     </>
   );

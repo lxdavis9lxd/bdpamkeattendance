@@ -2,7 +2,7 @@ import axios from "axios";
 
 /**
  * Axios-powered API client with CRUD helpers.
- * Requests to "/api/*" are proxied by Vite to the Express server on port 5000.
+ * Requests to "/api/*" are rewritten by Next.js to the Express server on port 5000.
  */
 
 export class ApiClient {

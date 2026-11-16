@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,7 +85,7 @@ function ViewerRequestForm() {
 
 export default function Home() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const canRequest = !user || (user.role !== "admin" && user.role !== "viewer");
 
   return (
@@ -130,8 +130,8 @@ export default function Home() {
 
       {!user && (
         <div className="mt-8 flex gap-4">
-          <Button onClick={() => navigate("/login")}>Sign In</Button>
-          <Button variant="outline" onClick={() => navigate("/report")}>View Report as Guest</Button>
+          <Button onClick={() => router.push("/login")}>Sign In</Button>
+          <Button variant="outline" onClick={() => router.push("/report")}>View Report as Guest</Button>
         </div>
       )}
 

@@ -2,10 +2,10 @@
 
 ## How to Add a New Page
 
-1. **Create the page component** in `src/pages/`:
+1. **Create the page component** in `src/views/`:
 
 ```jsx
-// src/pages/Dashboard.jsx
+// src/views/Dashboard.jsx
 import React from "react";
 import Container from "../components/layout/Container";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,29 +25,22 @@ export default function Dashboard() {
 2. **Add the route** in `src/App.jsx`:
 
 ```jsx
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./views/Dashboard";
 // ... other imports
 
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        {/* Add your new route here */}
-      </Routes>
-    </BrowserRouter>
-  );
+function AppRoutes() {
+  const pathname = usePathname();
+  if (pathname === "/dashboard") return <Dashboard />;
+  return <Home />;
 }
 ```
 
 3. **Add navigation link** (optional) in `src/components/ui/Navbar.jsx` or `Sidebar.jsx`:
 
 ```jsx
-import { Link } from "react-router-dom";
+import Link from "next/link";
 
-<Link to="/dashboard" className="text-gray-700 hover:text-blue-600">
+<Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
   Dashboard
 </Link>
 ```
@@ -58,10 +51,10 @@ The scaffold includes an Axios-based API client in `src/utils/api.js` with built
 
 ### Basic API Configuration
 
-Set your API base URL in a `.env` file:
+Set your API base URL in `next.config.mjs` rewrites (the app already proxies `/api/*` to the Express server):
 
 ```bash
-VITE_API_BASE_URL=https://api.example.com
+/api/* -> http://localhost:5000/api/*
 ```
 
 ### Making API Calls

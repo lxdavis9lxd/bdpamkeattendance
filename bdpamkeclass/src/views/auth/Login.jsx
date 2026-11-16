@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import bdpamkeLogo from "@/artifacts/BDPAmke.avif";
 
 export default function Login() {
   const { login } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -26,7 +26,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(username, password);
-      navigate("/");
+      router.push("/");
     } catch (err) {
       setError(err?.response?.data?.error || "Login failed. Please try again.");
     } finally {
@@ -38,7 +38,7 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen">
       <Card className="w-full max-w-sm shadow-lg">
         <CardHeader className="items-center gap-2">
-          <img src={bdpamkeLogo} alt="BDPAMKE" className="h-14 w-auto object-contain" />
+          <img src={bdpamkeLogo.src} alt="BDPAMKE" className="h-14 w-auto object-contain" />
           <CardTitle className="text-xl">Sign In</CardTitle>
         </CardHeader>
         <CardContent>
@@ -79,7 +79,7 @@ export default function Login() {
           <div className="mt-4 text-center">
             <button
               type="button"
-              onClick={() => navigate("/report")}
+              onClick={() => router.push("/report")}
               className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
             >
               Continue as Guest (Report only)
@@ -88,7 +88,7 @@ export default function Login() {
           <div className="mt-2 text-center">
             <button
               type="button"
-              onClick={() => navigate("/forgot-password")}
+              onClick={() => router.push("/forgot-password")}
               className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
             >
               Forgot Password?

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.next/
 ecosystem.config.js
 .env
 *.env
