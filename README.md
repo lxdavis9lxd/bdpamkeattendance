@@ -27,3 +27,7 @@ npm run server
 Optional environment variables:
 
 - `SQLITE_FILE` — custom SQLite file path
+
+## Admin database maintenance
+
+Admins can use the **DB Maintenance** tab (`/admin/database`) to bulk-delete rows from non-security/non-role tables and restore them from recovery batches.

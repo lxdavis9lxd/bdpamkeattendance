@@ -13,6 +13,7 @@ import Attendance from "./views/Attendance.jsx";
 import AttendanceReport from "./views/AttendanceReport.jsx";
 import RoleRequests from "./views/RoleRequests.jsx";
 import AdminUsers from "./views/AdminUsers.jsx";
+import DatabaseMaintenance from "./views/DatabaseMaintenance.jsx";
 import ForgotPassword from "./views/auth/ForgotPassword.jsx";
 import bdpamkeLogo from "./artifacts/BDPAmke.avif";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
@@ -94,6 +95,16 @@ function Nav() {
           >
             Users
           </Link>
+          <Link
+            href="/admin/database"
+            className={`text-sm font-medium transition-colors ${
+              pathname === "/admin/database"
+                ? "text-teal-300 underline underline-offset-4"
+                : "text-red-400/80 hover:text-red-300"
+            }`}
+          >
+            DB Maintenance
+          </Link>
         </>
       )}
       <div className="ml-auto flex items-center gap-3">
@@ -125,6 +136,7 @@ function AppRoutes() {
   else if (pathname === "/report") page = <AttendanceReport />;
   else if (pathname === "/role-requests") page = <ProtectedRoute allowedRoles={["admin"]}><RoleRequests /></ProtectedRoute>;
   else if (pathname === "/admin/users") page = <ProtectedRoute allowedRoles={["admin"]}><AdminUsers /></ProtectedRoute>;
+  else if (pathname === "/admin/database") page = <ProtectedRoute allowedRoles={["admin"]}><DatabaseMaintenance /></ProtectedRoute>;
   else if (pathname === "/component-test") page = <ComponentTest />;
 
   return (

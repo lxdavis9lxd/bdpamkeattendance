@@ -92,6 +92,81 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_role_requests_status ON role_requests(status);
   CREATE INDEX IF NOT EXISTS idx_password_resets_user_id ON password_resets(user_id);
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+  CREATE TABLE IF NOT EXISTS deletion_batches (
+    id TEXT PRIMARY KEY,
+    operation TEXT NOT NULL,
+    deleted_students_count INTEGER NOT NULL DEFAULT 0,
+    deleted_attendance_records_count INTEGER NOT NULL DEFAULT 0,
+    created_by_user_id TEXT NOT NULL,
+    created_by_username TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    restored_by_user_id TEXT,
+    restored_by_username TEXT,
+    restored_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS deleted_students (
+    batch_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT,
+    laptop_number TEXT,
+    cell_phone TEXT,
+    home_phone TEXT,
+    date_of_birth TEXT,
+    grade TEXT,
+    school TEXT,
+    shirt_size TEXT,
+    parent_first_name TEXT,
+    parent_last_name TEXT,
+    parent_cell_phone TEXT,
+    parent_email TEXT,
+    address1 TEXT,
+    address2 TEXT,
+    program_status TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (batch_id, id),
+    FOREIGN KEY (batch_id) REFERENCES deletion_batches(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS deleted_attendance_records (
+    batch_id TEXT NOT NULL,
+    session_id INTEGER NOT NULL,
+    student_id TEXT NOT NULL,
+    present INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (batch_id, session_id, student_id),
+    FOREIGN KEY (batch_id) REFERENCES deletion_batches(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_deletion_batches_created_at ON deletion_batches(created_at);
+  CREATE INDEX IF NOT EXISTS idx_deleted_students_batch_id ON deleted_students(batch_id);
+  CREATE INDEX IF NOT EXISTS idx_deleted_attendance_batch_id ON deleted_attendance_records(batch_id);
+
+  CREATE TABLE IF NOT EXISTS deletion_batch_tables (
+    batch_id TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    deleted_rows_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (batch_id, table_name),
+    FOREIGN KEY (batch_id) REFERENCES deletion_batches(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS deleted_table_rows (
+    batch_id TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    row_key TEXT NOT NULL,
+    row_data TEXT NOT NULL,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (batch_id, table_name, row_key),
+    FOREIGN KEY (batch_id) REFERENCES deletion_batches(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_deletion_batch_tables_batch_id ON deletion_batch_tables(batch_id);
+  CREATE INDEX IF NOT EXISTS idx_deleted_table_rows_batch_id ON deleted_table_rows(batch_id);
 `);
 
 module.exports = { db, dbFile };

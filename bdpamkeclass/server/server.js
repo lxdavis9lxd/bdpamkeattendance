@@ -19,6 +19,16 @@ const STUDENT_FIELDS = [
   "dateOfBirth", "grade", "school", "shirtSize", "parentFirstName", "parentLastName",
   "parentCellPhone", "parentEmail", "address1", "address2", "programStatus",
 ];
+const PROTECTED_MAINTENANCE_TABLES = new Set([
+  "users",
+  "role_requests",
+  "password_resets",
+  "deletion_batches",
+  "deleted_students",
+  "deleted_attendance_records",
+  "deletion_batch_tables",
+  "deleted_table_rows",
+]);
 
 const nowIso = () => new Date().toISOString();
 const newId = () => crypto.randomUUID();
@@ -120,6 +130,77 @@ function mapAttendanceSession(sessionRow, recordRows) {
     createdAt: sessionRow.created_at,
     updatedAt: sessionRow.updated_at,
   };
+}
+
+function mapDeletionBatch(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    operation: row.operation,
+    deletedStudentsCount: row.deleted_students_count,
+    deletedAttendanceRecordsCount: row.deleted_attendance_records_count,
+    createdBy: {
+      id: row.created_by_user_id,
+      username: row.created_by_username,
+    },
+    createdAt: row.created_at,
+    restoredBy: row.restored_by_user_id ? {
+      id: row.restored_by_user_id,
+      username: row.restored_by_username,
+    } : null,
+    restoredAt: row.restored_at,
+  };
+}
+
+function asTableName(value) {
+  const normalized = asOptionalText(value);
+  if (!normalized) return null;
+  return normalized.toLowerCase();
+}
+
+function quoteIdentifier(identifier) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
+    throw new Error(`Invalid identifier: ${identifier}`);
+  }
+  return `"${identifier}"`;
+}
+
+function getAllUserTables() {
+  return db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%'
+    ORDER BY name ASC
+  `).all().map((row) => row.name);
+}
+
+function getAllowedMaintenanceTables() {
+  return getAllUserTables().filter((name) => !PROTECTED_MAINTENANCE_TABLES.has(name));
+}
+
+function getTablePrimaryKeyColumns(tableName) {
+  const pragmaRows = db.prepare(`PRAGMA table_info(${quoteIdentifier(tableName)})`).all();
+  const pkColumns = pragmaRows
+    .filter((row) => Number(row.pk) > 0)
+    .sort((a, b) => Number(a.pk) - Number(b.pk))
+    .map((row) => row.name);
+  return { columns: pragmaRows.map((row) => row.name), pkColumns };
+}
+
+function buildRowPredicate(pkColumns, keys) {
+  const clauses = [];
+  const params = [];
+  for (const key of keys) {
+    const parts = [];
+    for (const pk of pkColumns) {
+      if (!(pk in key)) throw new Error(`Missing primary key field: ${pk}`);
+      parts.push(`${quoteIdentifier(pk)} = ?`);
+      params.push(key[pk]);
+    }
+    clauses.push(`(${parts.join(" AND ")})`);
+  }
+  return { whereSql: clauses.join(" OR "), params };
 }
 
 function getStudentInput(payload) {
@@ -569,6 +650,225 @@ app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =
     if (user.role === "admin") return res.status(403).json({ error: "Admin accounts cannot be deleted." });
     db.prepare("DELETE FROM users WHERE id = ?").run(id);
     return res.json({ message: "User deleted." });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/db-maintenance/tables", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const allowedTables = getAllowedMaintenanceTables();
+    const result = [];
+    for (const tableName of allowedTables) {
+      const row = db.prepare(`SELECT COUNT(*) AS count FROM ${quoteIdentifier(tableName)}`).get();
+      const { pkColumns } = getTablePrimaryKeyColumns(tableName);
+      result.push({ tableName, rowCount: row.count, primaryKeyColumns: pkColumns });
+    }
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/db-maintenance/table/:tableName/rows", requireAuth, requireAdmin, async (req, res) => {
+  const tableName = asTableName(req.params.tableName);
+  const limit = Math.max(1, Math.min(500, Number(req.query.limit || 200)));
+  if (!tableName) return res.status(400).json({ error: "Table name is required." });
+
+  try {
+    const allowedTables = new Set(getAllowedMaintenanceTables());
+    if (!allowedTables.has(tableName)) {
+      return res.status(403).json({ error: `Bulk delete is not allowed for table "${tableName}".` });
+    }
+
+    const { columns, pkColumns } = getTablePrimaryKeyColumns(tableName);
+    if (pkColumns.length === 0) {
+      return res.status(400).json({ error: `Table "${tableName}" has no primary key and is not supported for bulk delete.` });
+    }
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM ${quoteIdentifier(tableName)}
+      LIMIT ?
+    `).all(limit);
+
+    return res.json({
+      tableName,
+      primaryKeyColumns: pkColumns,
+      columns,
+      rows,
+      limit,
+      returnedCount: rows.length,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/db-maintenance/deletion-batches", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT *
+      FROM deletion_batches
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all();
+
+    const result = rows.map((row) => {
+      const tables = db.prepare(`
+        SELECT table_name AS tableName, deleted_rows_count AS deletedRowsCount
+        FROM deletion_batch_tables
+        WHERE batch_id = ?
+        ORDER BY table_name ASC
+      `).all(row.id);
+      return { ...mapDeletionBatch(row), tables };
+    });
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/db-maintenance/table/bulk-delete", requireAuth, requireAdmin, async (req, res) => {
+  const tableName = asTableName(req.body.tableName);
+  const rawKeys = Array.isArray(req.body.keys) ? req.body.keys : [];
+  if (!tableName) return res.status(400).json({ error: "tableName is required." });
+  if (rawKeys.length === 0) return res.status(400).json({ error: "keys must contain at least one record key." });
+
+  try {
+    const allowedTables = new Set(getAllowedMaintenanceTables());
+    if (!allowedTables.has(tableName)) {
+      return res.status(403).json({ error: `Bulk delete is not allowed for table "${tableName}".` });
+    }
+
+    const { pkColumns } = getTablePrimaryKeyColumns(tableName);
+    if (pkColumns.length === 0) {
+      return res.status(400).json({ error: `Table "${tableName}" has no primary key and is not supported for bulk delete.` });
+    }
+
+    const keys = rawKeys.map((raw) => {
+      const item = {};
+      for (const pk of pkColumns) item[pk] = raw?.[pk];
+      return item;
+    });
+    const { whereSql, params } = buildRowPredicate(pkColumns, keys);
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM ${quoteIdentifier(tableName)}
+      WHERE ${whereSql}
+    `).all(...params);
+    if (rows.length === 0) return res.status(404).json({ error: "No matching records found to delete." });
+
+    const batchId = newId();
+    const now = nowIso();
+    const insertBatch = db.prepare(`
+      INSERT INTO deletion_batches (
+        id, operation, deleted_students_count, deleted_attendance_records_count,
+        created_by_user_id, created_by_username, created_at
+      ) VALUES (?, ?, 0, 0, ?, ?, ?)
+    `);
+    const insertBatchTable = db.prepare(`
+      INSERT INTO deletion_batch_tables (batch_id, table_name, deleted_rows_count)
+      VALUES (?, ?, ?)
+    `);
+    const insertDeletedRow = db.prepare(`
+      INSERT INTO deleted_table_rows (batch_id, table_name, row_key, row_data, deleted_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const deleteRows = db.prepare(`
+      DELETE FROM ${quoteIdentifier(tableName)}
+      WHERE ${whereSql}
+    `);
+
+    const tx = db.transaction(() => {
+      insertBatch.run(batchId, "bulk-delete-table", req.user.id, req.user.username, now);
+      insertBatchTable.run(batchId, tableName, rows.length);
+      for (const row of rows) {
+        const keyObj = {};
+        for (const pk of pkColumns) keyObj[pk] = row[pk];
+        insertDeletedRow.run(batchId, tableName, JSON.stringify(keyObj), JSON.stringify(row), now);
+      }
+      deleteRows.run(...params);
+    });
+    tx();
+
+    return res.json({
+      message: "Bulk delete complete.",
+      batch: { id: batchId, tableName, deletedRowsCount: rows.length },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/db-maintenance/deletion-batches/:id/restore", requireAuth, requireAdmin, async (req, res) => {
+  const batchId = asOptionalText(req.params.id);
+  if (!batchId) return res.status(400).json({ error: "Batch ID is required." });
+
+  try {
+    const batch = db.prepare("SELECT * FROM deletion_batches WHERE id = ? LIMIT 1").get(batchId);
+    if (!batch) return res.status(404).json({ error: "Deletion batch not found." });
+    if (batch.restored_at) return res.status(409).json({ error: "This deletion batch has already been restored." });
+
+    const batchTables = db.prepare(`
+      SELECT table_name AS tableName
+      FROM deletion_batch_tables
+      WHERE batch_id = ?
+      ORDER BY table_name ASC
+    `).all(batchId);
+    if (batchTables.length === 0) return res.status(404).json({ error: "No archived table data found for this batch." });
+
+    const restoreAt = nowIso();
+    const updateBatch = db.prepare(`
+      UPDATE deletion_batches
+      SET restored_by_user_id = ?, restored_by_username = ?, restored_at = ?
+      WHERE id = ?
+    `);
+    const tx = db.transaction(() => {
+      for (const { tableName } of batchTables) {
+        const allowedTables = new Set(getAllowedMaintenanceTables());
+        if (!allowedTables.has(tableName)) {
+          throw new Error(`Cannot restore protected table "${tableName}".`);
+        }
+
+        const { columns, pkColumns } = getTablePrimaryKeyColumns(tableName);
+        if (pkColumns.length === 0) throw new Error(`Cannot restore table "${tableName}" without primary key.`);
+
+        const archivedRows = db.prepare(`
+          SELECT row_data, row_key
+          FROM deleted_table_rows
+          WHERE batch_id = ? AND table_name = ?
+        `).all(batchId, tableName);
+
+        for (const archived of archivedRows) {
+          const rowData = JSON.parse(archived.row_data);
+          const rowKey = JSON.parse(archived.row_key);
+          const keyWhere = pkColumns.map((pk) => `${quoteIdentifier(pk)} = ?`).join(" AND ");
+          const keyParams = pkColumns.map((pk) => rowKey[pk]);
+          const existing = db.prepare(`
+            SELECT 1
+            FROM ${quoteIdentifier(tableName)}
+            WHERE ${keyWhere}
+            LIMIT 1
+          `).get(...keyParams);
+          if (existing) throw new Error(`Cannot restore: record already exists in "${tableName}" with key ${archived.row_key}`);
+
+          const insertColumns = columns.filter((col) => Object.prototype.hasOwnProperty.call(rowData, col));
+          const insertSql = `
+            INSERT INTO ${quoteIdentifier(tableName)} (${insertColumns.map(quoteIdentifier).join(", ")})
+            VALUES (${insertColumns.map(() => "?").join(", ")})
+          `;
+          db.prepare(insertSql).run(...insertColumns.map((col) => rowData[col]));
+        }
+      }
+
+      updateBatch.run(req.user.id, req.user.username, restoreAt, batchId);
+    });
+    tx();
+
+    return res.json({ message: "Restore complete." });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
