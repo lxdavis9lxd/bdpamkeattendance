@@ -2,37 +2,11 @@
 /**
  * Seed script — inserts students from the BDPAMKE roster spreadsheet.
  * Run with:  node server/seed.js
- * The Express server must be running on port 5000, OR set MONGO_URI env var
- * and this script will connect directly to MongoDB.
+ * Writes directly to the SQLite database used by the Express server.
  */
 
-const mongoose = require("mongoose");
-
-const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/bdpamke_student";
-
-const studentSchema = new mongoose.Schema(
-  {
-    firstName:       { type: String, required: true, trim: true },
-    lastName:        { type: String, required: true, trim: true },
-    email:           { type: String, trim: true },
-    laptopNumber:    { type: String, trim: true },
-    cellPhone:       { type: String, trim: true },
-    homePhone:       { type: String, trim: true },
-    dateOfBirth:     { type: String, trim: true },
-    grade:           { type: String, trim: true },
-    school:          { type: String, trim: true },
-    shirtSize:       { type: String, trim: true },
-    parentFirstName: { type: String, trim: true },
-    parentLastName:  { type: String, trim: true },
-    parentCellPhone: { type: String, trim: true },
-    parentEmail:     { type: String, trim: true },
-    address1:        { type: String, trim: true },
-    address2:        { type: String, trim: true },
-  },
-  { timestamps: true }
-);
-
-const Student = mongoose.model("Student", studentSchema);
+const crypto = require("crypto");
+const { db, dbFile } = require("./sqlite");
 
 const students = [
   {
@@ -168,21 +142,50 @@ const students = [
 
 async function seed() {
   try {
-    await mongoose.connect(MONGO_URI);
-    console.log("✅ Connected to MongoDB:", MONGO_URI);
+    console.log("✅ Connected to SQLite:", dbFile);
 
-    // Avoid duplicates — remove existing students with matching first+last name
-    for (const s of students) {
-      await Student.deleteMany({ firstName: s.firstName, lastName: s.lastName });
-    }
+    const deleteStmt = db.prepare("DELETE FROM students WHERE first_name = ? AND last_name = ?");
+    const insertStmt = db.prepare(`
+      INSERT INTO students (
+        id, first_name, last_name, email, laptop_number, cell_phone, home_phone, date_of_birth, grade, school, shirt_size,
+        parent_first_name, parent_last_name, parent_cell_phone, parent_email, address1, address2, program_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+    `);
 
-    const result = await Student.insertMany(students);
-    console.log(`✅ Inserted ${result.length} students successfully.`);
+    const runSeed = db.transaction(() => {
+      for (const s of students) {
+        deleteStmt.run(s.firstName, s.lastName);
+      }
+
+      for (const s of students) {
+        const now = new Date().toISOString();
+        insertStmt.run(
+          crypto.randomUUID(),
+          s.firstName,
+          s.lastName,
+          s.email || null,
+          s.laptopNumber || null,
+          s.cellPhone || null,
+          s.homePhone || null,
+          s.dateOfBirth || null,
+          s.grade || null,
+          s.school || null,
+          s.shirtSize || null,
+          s.parentFirstName || null,
+          s.parentLastName || null,
+          s.parentCellPhone || null,
+          s.parentEmail || null,
+          s.address1 || null,
+          s.address2 || null,
+          now,
+          now
+        );
+      }
+    });
+    runSeed();
+    console.log(`✅ Inserted ${students.length} students successfully.`);
   } catch (err) {
     console.error("❌ Seed failed:", err.message);
-  } finally {
-    await mongoose.disconnect();
-    console.log("🔌 Disconnected.");
   }
 }
 
